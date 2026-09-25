@@ -569,7 +569,7 @@ function goalieWatch(autoBy = new Map(autoWatch().rows.map(r => [r.p.id, r]))) {
 // ---------- render ----------
 function posChip(p){ return `<span class="pos ${p.p}">${p.e.join("/")}</span>`; }
 function statLine(p) {
-  const stats = state.projectionMode === "blended" ? {"Player GP": p.gp, ...p.s} : (p.raw || {GP: p.gp});
+  const stats = state.projectionMode === "blended" ? p.s : (p.raw || {GP: p.gp});
   return Object.entries(stats).filter(([,v]) => v != null).map(([k,v]) => `${k} ${v}`).join(" · ");
 }
 
@@ -607,7 +607,7 @@ function renderClock() {
 function renderRecs() {
   $("projectionMode").value = state.projectionMode;
   $("projectionHint").textContent = state.projectionMode === "blended"
-    ? "Skaters: player + bench coverage for 80% of missed games. Goalies: no bench coverage. Rankings unchanged."
+    ? "Skaters: 84-game season, with bench coverage for 80% of missed games. Goalies: no bench coverage. Rankings unchanged."
     : "Player-only consensus, before bench coverage. GP = projected games played. Rankings use blended values.";
   const {list, myTurn, upPick, strength} = recommend();
   const aw = autoWatch(), autoBy = new Map(aw.rows.map(r => [r.p.id, r]));
