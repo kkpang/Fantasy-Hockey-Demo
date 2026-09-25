@@ -182,6 +182,8 @@ td.pl{white-space:normal;min-width:180px}
 .bypos .card{padding:10px 12px}
 .bypos h3{font-family:var(--display);font-size:16px;letter-spacing:.05em;margin:0 0 4px}
 .bypos li{display:flex;justify-content:space-between;gap:6px;font-size:13px;padding:2px 0}
+.auto-risk-name{font-weight:800;color:var(--red);background:var(--red-soft);border-radius:3px;padding:1px 4px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.auto-risk-note{display:block;color:var(--red);font-size:12px;font-weight:600;margin-top:3px}
 .bypos ol{list-style:none;margin:0;padding:0}
 .bypos li span:last-child{color:var(--muted);white-space:nowrap}
 .autow{margin:0 0 18px;padding:10px 14px}
@@ -405,13 +407,18 @@ function autoWatch() {
   const cur = state.picks.length, myTurn = cur < TOTAL && teamOf(cur) === me();
   const upto = nextMine(myTurn ? cur + 1 : cur);
   if (upto < 0) return {rows: [], upto};
-  const gone = new Set(taken()), rows = [];
+  const gone = new Set(taken()), rows = [], counts = new Map();
   for (let i = myTurn ? cur + 1 : cur; i < upto; i++) {
     const t = teamOf(i); if (t === me() || !isAuto(t)) continue;
-    const ps = teamPlayers(t), cnt = {n: ps.length, g: ps.filter(p => p.p === "G").length};
+    if (!counts.has(t)) {
+      const ps = teamPlayers(t);
+      counts.set(t, {n: ps.length, g: ps.filter(p => p.p === "G").length});
+    }
+    const cnt = counts.get(t);
     const pick = AUTO_ORDER.find(p => !gone.has(p.id) && fits(p, cnt));
     if (!pick) continue;
-    gone.add(pick.id); rows.push({i, t, p: pick});
+    gone.add(pick.id); cnt.n++; if (pick.p === "G") cnt.g++;
+    rows.push({i, t, p: pick});
   }
   return {rows, upto};
 }
@@ -492,7 +499,15 @@ function recommend() {
 }
 
 // ---------- goalie watch: when to take G1 / G2 ----------
-function goalieWatch() {
+function autoRiskName(p, autoBy) {
+  const hit = autoBy.get(p.id);
+  return hit ? `<strong class="auto-risk-name" title="Likely autodrafted at pick #${hit.i + 1}, before your next pick">${esc(p.n)}</strong>` : esc(p.n);
+}
+function autoRiskNote(p, autoBy) {
+  const hit = autoBy.get(p.id);
+  return hit ? `<small class="auto-risk-note">Autodraft likely · #${hit.i + 1} · before your next pick</small>` : "";
+}
+function goalieWatch(autoBy = new Map(autoWatch().rows.map(r => [r.p.id, r]))) {
   const cur = state.picks.length, gone = taken();
   if (cur >= TOTAL) return "";
   const myTurn = teamOf(cur) === me();
@@ -541,7 +556,7 @@ function goalieWatch() {
       <dt>Your goalies</dt><dd>${myG.length} of ${targetN} · ${mySolid} solid</dd>
       ${myG.length ? `<dt>Your projected starts</dt><dd>${Math.round(gsTot)}${gsTot < 60 ? " · under 60 min" : ""}</dd>` : ""}
       ${lean ? `<dt>Your goalies lean</dt><dd>${lean} (W+SO ${vol >= 0 ? "+" : ""}${vol.toFixed(1)}, ratios ${rat >= 0 ? "+" : ""}${rat.toFixed(1)})</dd>` : ""}</dl>
-    ${best ? `<div class="statline">Best: <b>${esc(best.n)}</b> ${esc(best.t)} · ${esc(best.grp || "")} · ${esc(statLine(best))}</div>
+    ${best ? `<div class="statline">Best: <b>${autoRiskName(best, autoBy)}</b>${autoRiskNote(best, autoBy)} ${esc(best.t)} · ${esc(best.grp || "")} · ${esc(statLine(best))}</div>
     ${liveActive() ? "" : `<button class="btn${go ? " primary" : ""}" type="button" data-draft="${best.id}">Draft ${esc(best.n.split(" ").slice(-1)[0])}</button>`}` : ""}
   </article>`;
 }
@@ -600,15 +615,15 @@ function renderRecs() {
     if (r.helps.length) tags.push(`<span class="tag good">Helps ${r.helps.slice(0,3).join(", ")}</span>`);
     if (p.inj) tags.push(`<span class="tag urgent">${esc(p.inj)}</span>`);
     return `<article class="rec${i === 0 && myTurn ? " top" : ""}">
-      <div class="rec-top"><div><div class="nm">${esc(p.n)}</div>
+      <div class="rec-top"><div><div class="nm">${autoRiskName(p, autoBy)}</div>
         <div class="meta">${posChip(p)} ${esc(p.t)} · fair #${p.rk} · ESPN #${p.er ?? "—"}</div></div>
         <div class="score">${p.v.toFixed(1)}<small>FAIR</small></div></div>
       <div class="why">${tags.join("")}</div>
       <div class="statline">${esc(statLine(p))}</div>
       ${liveActive() ? "" : `<button class="btn primary" type="button" data-draft="${p.id}">Draft ${myTurn ? "for me" : `for ${teamName(teamOf(state.picks.length))}`}</button>`}
     </article>`;
-  }).join("") + goalieWatch();
-  renderByPos(); renderAuto(aw);
+  }).join("") + goalieWatch(autoBy);
+  renderByPos(autoBy); renderAuto(aw);
 }
 function renderAuto(aw) {
   const cur = state.picks.length;
@@ -620,13 +635,13 @@ function renderAuto(aw) {
       ? `<ol>${aw.rows.map(r => `<li><span>#${r.i + 1} ${esc(teamName(r.t))}</span><span><b>${esc(r.p.n)}</b> ${r.p.p}${r.p.p === "G" ? "" : ""} · ESPN #${r.p.er ?? "—"} · fair ${r.p.p === "G" ? "G" : "#"}${r.p.rk}</span></li>`).join("")}</ol>`
       : `<p class="hint">No autodraft picks before your next pick. Auto teams: ${esc(autos.join(", "))}.</p>`;
 }
-function renderByPos() {
+function renderByPos(autoBy = new Map(autoWatch().rows.map(r => [r.p.id, r]))) {
   const gone = taken();
   $("bypos").innerHTML = ["C","LW","RW","D","G"].map(pos => {
     const list = P.filter(p => !gone.has(p.id) && !p.stub && (pos === "G" ? p.p === "G" : p.e.includes(pos)))
       .sort((a, b) => b.v - a.v).slice(0, 3);
     return `<div class="card"><h3>${pos}</h3><ol>${list.map(p =>
-      `<li><span>${esc(p.n)}</span><span>${p.v.toFixed(1)}${pos === "G" ? " · " + esc(p.grp || "") : ""} · ESPN ${p.er ?? "—"}</span></li>`).join("")}</ol></div>`;
+      `<li><span>${autoRiskName(p, autoBy)}${autoRiskNote(p, autoBy)}</span><span>${p.v.toFixed(1)}${pos === "G" ? " · " + esc(p.grp || "") : ""} · ESPN ${p.er ?? "—"}</span></li>`).join("")}</ol></div>`;
   }).join("");
 }
 
