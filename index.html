@@ -179,13 +179,21 @@ td.pl{white-space:normal;min-width:180px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .bypos{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}
 @media (max-width:900px){.bypos{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.bypos .card{padding:10px 12px}
+.bypos .card{padding:10px 12px;position:relative}
 .bypos h3{font-family:var(--display);font-size:16px;letter-spacing:.05em;margin:0 0 4px}
 .bypos li{display:flex;justify-content:space-between;gap:6px;font-size:13px;padding:2px 0}
 .auto-risk-name{font-weight:800;color:var(--red);background:var(--red-soft);border-radius:3px;padding:1px 4px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .auto-risk-note{display:block;color:var(--red);font-size:12px;font-weight:600;margin-top:3px}
 .bypos ol{list-style:none;margin:0;padding:0}
-.bypos li span:last-child{color:var(--muted);white-space:nowrap}
+.bypos li > span:last-child{color:var(--muted);white-space:nowrap}
+.pos-name{border:0;padding:0;background:none;text-align:left;font:inherit;cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
+.pos-tooltip{max-height:60vh;overflow:auto;display:none;position:absolute;left:6px;right:6px;z-index:10;background:var(--board);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;box-shadow:0 4px 18px #0005;font-size:12px;white-space:normal}
+.pos-player:hover > .pos-tooltip,.pos-player:focus-within > .pos-tooltip{display:block}
+.pos-tooltip b{display:block;margin-bottom:5px}
+.pos-tooltip .tip-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px}
+.pos-tooltip .tip-stat{white-space:nowrap}
+.pos-tooltip .meta,.pos-tooltip .tip-note{display:block;margin:5px 0;white-space:normal}
+.pos-player.tip-dismissed > .pos-tooltip{display:none}
 .autow{margin:0 0 18px;padding:10px 14px}
 .autow ol{list-style:none;margin:0;padding:0;columns:2;column-gap:24px}
 @media (max-width:760px){.autow ol{columns:1}}
@@ -604,6 +612,20 @@ function renderClock() {
   $("fixCancel").hidden = fx == null; $("undo2").hidden = fx != null;
 }
 
+function recommendationTags(r, autoBy) {
+  if (!r) return "";
+    const p = r.p, tags = [];
+    if (r.need === 1) tags.push(`<span class="tag good">Fills ${p.e.find(x => r.s[x] && r.s[x].length < (R[x]||0)) || p.p}</span>`);
+    else if (r.need >= 0.8) tags.push(`<span class="tag">Last ${p.e.find(x => r.s[x] && r.s[x].length < (R[x]||0)) || p.p} slot</span>`);
+    else if (r.need >= 0.7) tags.push(`<span class="tag">UTIL</span>`);
+    else tags.push(`<span class="tag warn">Bench</span>`);
+    if (r.flex) tags.push(`<span class="tag">${p.e.filter(x => ["C","LW","RW","D"].includes(x)).join("/")} flex</span>`);
+    const ab = autoBy.get(p.id);
+    if (ab) tags.push(`<span class="tag urgent">Autodraft likely takes him at #${ab.i + 1}</span>`);
+    if (r.helps.length) tags.push(`<span class="tag good">Helps ${r.helps.slice(0,3).join(", ")}</span>`);
+    if (p.inj) tags.push(`<span class="tag urgent">${esc(p.inj)}</span>`);
+  return tags.join("");
+}
 function renderRecs() {
   $("projectionMode").value = state.projectionMode;
   $("projectionHint").textContent = state.projectionMode === "blended"
@@ -616,25 +638,16 @@ function renderRecs() {
     ? `Your pick (#${upPick + 1}). Fair value × roster need${strength ? ` · category balance ${Math.round(strength * 100)}%` : " · category balance from round " + BAL_START}.`
     : `Preview for your pick #${upPick + 1}. Fair value × roster need${strength ? ` · category balance ${Math.round(strength * 100)}%` : " · category balance from round " + BAL_START}.`;
   $("recs").innerHTML = top.map((r, i) => {
-    const p = r.p, tags = [];
-    if (r.need === 1) tags.push(`<span class="tag good">Fills ${p.e.find(x => r.s[x] && r.s[x].length < (R[x]||0)) || p.p}</span>`);
-    else if (r.need >= 0.8) tags.push(`<span class="tag">Last ${p.e.find(x => r.s[x] && r.s[x].length < (R[x]||0)) || p.p} slot</span>`);
-    else if (r.need >= 0.7) tags.push(`<span class="tag">UTIL</span>`);
-    else tags.push(`<span class="tag warn">Bench</span>`);
-    if (r.flex) tags.push(`<span class="tag">${p.e.filter(x => ["C","LW","RW","D"].includes(x)).join("/")} flex</span>`);
-    const ab = autoBy.get(p.id);
-    if (ab) tags.push(`<span class="tag urgent">Autodraft likely takes him at #${ab.i + 1}</span>`);
-    if (r.helps.length) tags.push(`<span class="tag good">Helps ${r.helps.slice(0,3).join(", ")}</span>`);
-    if (p.inj) tags.push(`<span class="tag urgent">${esc(p.inj)}</span>`);
+    const p = r.p;
     return `<article class="rec${i === 0 && myTurn ? " top" : ""}">
       <div class="rec-top"><div><div class="nm">${autoRiskName(p, autoBy)}</div>
         <div class="meta">${posChip(p)} ${esc(p.t)} · fair #${p.rk} · ESPN #${p.er ?? "—"}</div></div>
         <div class="score">${p.v.toFixed(1)}<small>FAIR</small></div></div>
-      <div class="why">${tags.join("")}</div>
+      <div class="why">${recommendationTags(r, autoBy)}</div>
       <div class="statline">${esc(statLine(p))}</div>
     </article>`;
   }).join("") + goalieWatch(autoBy);
-  renderByPos(autoBy); renderAuto(aw);
+  renderByPos(autoBy, new Map(list.map(r => [r.p.id, r]))); renderAuto(aw);
 }
 function renderAuto(aw) {
   const cur = state.picks.length;
@@ -646,13 +659,13 @@ function renderAuto(aw) {
       ? `<ol>${aw.rows.map(r => `<li><span>#${r.i + 1} ${esc(teamName(r.t))}</span><span><b>${esc(r.p.n)}</b> ${r.p.p}${r.p.p === "G" ? "" : ""} · ESPN #${r.p.er ?? "—"} · fair ${r.p.p === "G" ? "G" : "#"}${r.p.rk}</span></li>`).join("")}</ol>`
       : `<p class="hint">No autodraft picks before your next pick. Auto teams: ${esc(autos.join(", "))}.</p>`;
 }
-function renderByPos(autoBy = new Map(autoWatch().rows.map(r => [r.p.id, r]))) {
+function renderByPos(autoBy = new Map(autoWatch().rows.map(r => [r.p.id, r])), recBy = new Map(recommend().list.map(r => [r.p.id, r]))) {
   const gone = taken();
   $("bypos").innerHTML = ["C","LW","RW","D","G"].map(pos => {
     const list = P.filter(p => !gone.has(p.id) && !p.stub && (pos === "G" ? p.p === "G" : p.e.includes(pos)))
       .sort((a, b) => b.v - a.v).slice(0, 3);
     return `<div class="card"><h3>${pos}</h3><ol>${list.map(p =>
-      `<li><span>${autoRiskName(p, autoBy)}${autoRiskNote(p, autoBy)}</span><span>${p.v.toFixed(1)}${pos === "G" ? " · " + esc(p.grp || "") : ""} · ESPN ${p.er ?? "—"}</span></li>`).join("")}</ol></div>`;
+      `<li><span class="pos-player"><button class="pos-name" type="button" aria-describedby="projection-${pos}-${p.id}">${autoRiskName(p, autoBy)}</button><span class="pos-tooltip" role="tooltip" id="projection-${pos}-${p.id}"><b>${esc(p.n)} · ${state.projectionMode === "blended" ? "Blended" : "Raw"}</b><span class="meta">${esc(p.t)} · ${esc(p.e.join("/"))}${p.grp ? " · " + esc(p.grp) : ""}<br>Fair ${p.v.toFixed(1)} · rank #${p.rk} · ESPN #${p.er ?? "—"}</span><span class="tip-stats">${statLine(p).split(" · ").map(st => `<span class="tip-stat">${esc(st)}</span>`).join("")}</span><span class="why">${recommendationTags(recBy.get(p.id), autoBy)}</span>${p.note ? `<span class="tip-note">${p.miss ? `Misses ~${p.miss} GP · ` : ""}${esc(p.note)}</span>` : ""}</span>${autoRiskNote(p, autoBy)}</span><span>${p.v.toFixed(1)}${pos === "G" ? " · " + esc(p.grp || "") : ""} · ESPN ${p.er ?? "—"}</span></li>`).join("")}</ol></div>`;
   }).join("");
 }
 
@@ -760,10 +773,24 @@ function draft(id) {
   render();
 }
 document.addEventListener("click", e => {
+  const name = e.target.closest(".pos-name");
+  if (name) { name.parentElement.classList.remove("tip-dismissed"); name.focus({preventScroll:true}); }
+  else if (!e.target.closest(".pos-player")) document.querySelectorAll(".pos-player").forEach(el => el.classList.add("tip-dismissed"));
   const b = e.target.closest("[data-draft]");
   if (b) draft(Number(b.dataset.draft));
   const f = e.target.closest("[data-fix]");
   if (f) startFix(Number(f.dataset.fix));
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") document.querySelectorAll(".pos-player").forEach(el => el.classList.add("tip-dismissed"));
+});
+$("bypos").addEventListener("pointerover", e => {
+  const el = e.target.closest(".pos-player");
+  if (el && !el.contains(e.relatedTarget)) el.classList.remove("tip-dismissed");
+});
+$("bypos").addEventListener("focusin", e => {
+  const el = e.target.closest(".pos-player");
+  if (el) el.classList.remove("tip-dismissed");
 });
 document.addEventListener("change", e => {
   if (e.target.matches("[data-punt]")) { state.punt[e.target.dataset.punt] = e.target.checked; save(); render(); }
