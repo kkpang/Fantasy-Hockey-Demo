@@ -620,7 +620,6 @@ function renderRecs() {
         <div class="score">${p.v.toFixed(1)}<small>FAIR</small></div></div>
       <div class="why">${tags.join("")}</div>
       <div class="statline">${esc(statLine(p))}</div>
-      ${liveActive() ? "" : `<button class="btn primary" type="button" data-draft="${p.id}">Draft ${myTurn ? "for me" : `for ${teamName(teamOf(state.picks.length))}`}</button>`}
     </article>`;
   }).join("") + goalieWatch(autoBy);
   renderByPos(autoBy); renderAuto(aw);
